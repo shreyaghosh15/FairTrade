@@ -119,6 +119,120 @@ def find_statistical_parity_score(protected_attr,labels,predictions):
         stat_par = C_non_prot - C_prot
         return stat_par
 
+# def positive_prediction_rate(predictions):
+#     predictions = np.asarray(predictions, dtype=float)
+#     if predictions.size == 0:
+#         return np.nan
+#     return float(predictions.mean())
+
+def positive_prediction_rate(predictions, mask):
+    values = np.asarray(predictions, dtype=float)[np.asarray(mask)]
+    if values.size == 0:
+        return np.nan
+    return float(values.mean())
+
+def spd_from_masks(predictions, protected_mask, reference_mask):
+    protected_rate = positive_prediction_rate(predictions, protected_mask)
+    reference_rate = positive_prediction_rate(predictions, reference_mask)
+    return reference_rate - protected_rate
+
+def build_intersectional_spd_rows(x_test_df, predictions, sex_mapping, race_mapping):
+    predictions = np.asarray(predictions, dtype=int)
+
+    sex = x_test_df['sex'].astype(int).to_numpy()
+    race = x_test_df['race'].astype(int).to_numpy()
+
+    female_value = sex_mapping['Female']
+    male_value = sex_mapping['Male']
+    white_value = race_mapping['White']
+
+    female_mask = sex == female_value
+    male_mask = sex == male_value
+    white_mask = race == white_value
+    non_white_mask = race != white_value
+    white_male_mask = white_mask & male_mask
+    white_female_mask = white_mask & female_mask
+    non_white_male_mask = non_white_mask & male_mask
+    non_white_female_mask = non_white_mask & female_mask
+
+    rows = [
+        {
+            'group_type': 'attribute',
+            'group_name': 'Gender: Female vs Male',
+            'reference_group': 'Male',
+            'group_positive_rate': positive_prediction_rate(predictions, female_mask),
+            'reference_positive_rate': positive_prediction_rate(predictions, male_mask),
+            'spd': spd_from_masks(predictions, female_mask, male_mask),
+        },
+        {
+            'group_type': 'attribute',
+            'group_name': 'Race: Non-White vs White',
+            'reference_group': 'White',
+            'group_positive_rate': positive_prediction_rate(predictions, non_white_mask),
+            'reference_positive_rate': positive_prediction_rate(predictions, white_mask),
+            'spd': spd_from_masks(predictions, non_white_mask, white_mask),
+        },
+        {
+            'group_type': 'intersection',
+            'group_name': 'White Male',
+            'reference_group': 'White Male',
+            'group_positive_rate': positive_prediction_rate(predictions, white_male_mask),
+            'reference_positive_rate': positive_prediction_rate(predictions, white_male_mask),
+            'spd': 0.0,
+        },
+        {
+            'group_type': 'intersection',
+            'group_name': 'White Female',
+            'reference_group': 'White Male',
+            'group_positive_rate': positive_prediction_rate(predictions, white_female_mask),
+            'reference_positive_rate': positive_prediction_rate(predictions, white_male_mask),
+            'spd': spd_from_masks(predictions, white_female_mask, white_male_mask),
+        },
+        {
+            'group_type': 'intersection',
+            'group_name': 'Non-White Male',
+            'reference_group': 'White Male',
+            'group_positive_rate': positive_prediction_rate(predictions, non_white_male_mask),
+            'reference_positive_rate': positive_prediction_rate(predictions, white_male_mask),
+            'spd': spd_from_masks(predictions, non_white_male_mask, white_male_mask),
+        },
+        {
+            'group_type': 'intersection',
+            'group_name': 'Non-White Female',
+            'reference_group': 'White Male',
+            'group_positive_rate': positive_prediction_rate(predictions, non_white_female_mask),
+            'reference_positive_rate': positive_prediction_rate(predictions, white_male_mask),
+            'spd': spd_from_masks(predictions, non_white_female_mask, white_male_mask),
+        },
+    ]
+
+    return rows
+
+    # def make_row(group_type, group_name, group_mask, reference_name, reference_mask):
+    #     group_rate = positive_prediction_rate(predictions[group_mask])
+    #     reference_rate = positive_prediction_rate(predictions[reference_mask])
+    #     spd = group_rate - reference_rate
+
+    #     return {
+    #         'group_type': group_type,
+    #         'group_name': group_name,
+    #         'reference_group': reference_name,
+    #         'group_positive_rate': group_rate,
+    #         'reference_positive_rate': reference_rate,
+    #         'spd': spd,
+    #         'abs_spd': abs(spd),
+    #     }
+
+    # rows = []
+    # rows.append(make_row('attribute', 'Female', female_mask, 'Male', male_mask))
+    # rows.append(make_row('attribute', 'Non-White', nonwhite_mask, 'White', white_mask))
+    # rows.append(make_row('intersection', 'White Male', white_male_mask, 'White Male', white_male_mask))
+    # rows.append(make_row('intersection', 'White Female', white_mask & female_mask, 'White Male', white_male_mask))
+    # rows.append(make_row('intersection', 'Non-White Male', nonwhite_mask & male_mask, 'White Male', white_male_mask))
+    # rows.append(make_row('intersection', 'Non-White Female', nonwhite_mask & female_mask, 'White Male', white_male_mask))
+
+    return rows
+
 def find_eqop_score(self,data,labels,predictions):
         protected_pos = 0.
         protected_neg = 0.

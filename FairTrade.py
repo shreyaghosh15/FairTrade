@@ -2,8 +2,9 @@
 import torch
 import math
 import argparse
-from utilities import find_ate, find_ate_2, find_statistical_parity_score, find_eqop_score, all_metrics
-from load_data_utilities import get_data, load_dataset
+from utilities import find_ate, find_ate_2, find_statistical_parity_score, find_eqop_score, all_metrics, build_intersectional_spd_rows
+from load_data_utilities import get_data, load_dataset, get_adult_sensitive_mappings
+import os
 from constraint import AverageTreatmentEffectLoss, DemographicParityLoss
 from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import average_precision_score
@@ -11,6 +12,7 @@ from sklearn.metrics import average_precision_score
 from torch import nn
 from torch import optim
 import pandas as pd
+import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.metrics import classification_report, confusion_matrix
@@ -46,7 +48,7 @@ from botorch.utils.multi_objective.box_decompositions.non_dominated import (
 )
 # Initialize the argument parser
 parser = argparse.ArgumentParser(description="pass the following arguments: dataset_name, number of clients, fairness notion, number of communication rounds.")
-device = torch.device('mps')
+device = torch.device('cpu') #changed from mps because I use a Windows laptop
 '''
 #logistic regression model
 def create_model(input_dim):
@@ -100,6 +102,12 @@ parser.add_argument("--distribution_type", type=str, default='random',
 
 # Parse the arguments
 args = parser.parse_args()
+import random
+seed = 42
+random.seed(seed)
+np.random.seed(seed)
+torch.manual_seed(seed)
+torch.use_deterministic_algorithms(True)
 
 # Store them in respective variables
 fairness_notion = args.fairness_notion
@@ -132,6 +140,11 @@ else:
 bal_acc_list = []
 fairness_notion_list = []
 clients_data,X_test, y_test, sex_list, column_names_list, ytest_potential = load_dataset(url,dataset_name, num_clients, sensitive_feature,distribution_type)
+#Adding this for adult dataset to get the mappings of sensitive attribute values to 0 and 1
+adult_sensitive_mappings = None
+if dataset_name == 'adult':
+    adult_sensitive_mappings = get_adult_sensitive_mappings(url)
+
 X_test = X_test.to(device)
 y_test = y_test.to(device)
 global_model = create_model(X_test.shape[1])
@@ -216,6 +229,17 @@ def evaluate(alpha = 100, lr=0.001, cost_false_negatives=5):
         stat_parity = find_statistical_parity_score(sex_list, y_test,y_pred_cls)
         X_test_cpu = X_test.cpu()
         Xtest_dataframe = pd.DataFrame(X_test_cpu.numpy(), columns=column_names_list)
+
+        # if dataset_name == 'adult':
+        #     intersectional_rows = build_intersectional_spd_rows(
+        #         Xtest_dataframe,
+        #         y_pred_cls.cpu().numpy(),
+        #         adult_sensitive_mappings['sex'],
+        #         adult_sensitive_mappings['race'],)
+        #     intersectional_df = pd.DataFrame(intersectional_rows)
+        #     print("\nTask 2 intersectional SPD summary")
+        #     print(intersectional_df.to_string(index=False))
+
         y_pred_numpy = y_pred.clone().cpu()
         #ytest_potential = find_potential_outcomes(Xtest_dataframe,y_pred_numpy.round().detach().numpy())
         ate = find_ate_2(y_pred_cls.cpu(), ytest_potential, sex_list)#0 means female-protected attribute
@@ -265,9 +289,11 @@ for round in range(communication_rounds):
 
     #objectives = evaluate(alpha)
     if round == 0:
-        objectives, bal_acc_, fairness_notion_ = evaluate(alpha)
+        #objectives, bal_acc_, fairness_notion_ = evaluate(alpha)
+        objectives = evaluate(alpha)
     else:
-        objectives, bal_acc_, fairness_notion_ = evaluate(updated_alpha, updated_lr)
+        objectives = evaluate(updated_alpha, updated_lr)
+        #objectives, bal_acc_, fairness_notion_ = evaluate(updated_alpha, updated_lr)
     fairness_notion_list.append(objectives[0,0].item())
     bal_acc_list.append(objectives[0,1].item())
     
@@ -342,6 +368,17 @@ with torch.no_grad():
         stat_parity = find_statistical_parity_score(sex_list, y_test,y_pred_cls)
         X_test_cpu = X_test.cpu()
         Xtest_dataframe = pd.DataFrame(X_test_cpu.numpy(), columns=column_names_list)
+        if dataset_name == 'adult':
+            intersectional_rows = build_intersectional_spd_rows(
+                Xtest_dataframe,
+                y_pred_cls.cpu().numpy(),
+                adult_sensitive_mappings['sex'],
+                adult_sensitive_mappings['race'],
+            )
+            intersectional_df = pd.DataFrame(intersectional_rows)
+            print("\nTask 2 intersectional SPD summary")
+            print(intersectional_df.to_string(index=False))
+
         y_pred_numpy = y_pred.clone().cpu()
         #ytest_potential = find_potential_outcomes(Xtest_dataframe,y_pred_numpy.round().detach().numpy())
         ate = find_ate_2(y_pred_cls.cpu(), ytest_potential, sex_list)#0 means female-protected attribute
@@ -358,9 +395,26 @@ with torch.no_grad():
 
 
 destination = './results/'
+os.makedirs(os.path.join(destination, dataset_name), exist_ok=True)
+
+if dataset_name == 'adult':
+    csv_path = os.path.join(destination, dataset_name, f'{num_clients}_task2_intersectional_spd.csv')
+    chart_path = os.path.join(destination, dataset_name, f'{num_clients}_task2_intersectional_spd.png')
+
+    intersectional_df.to_csv(csv_path, index=False)
+
+    plt.figure(figsize=(8, 4))
+    plt.bar(intersectional_df['group_name'], intersectional_df['spd'])
+    plt.axhline(0, color='black', linewidth=1)
+    plt.ylabel('SPD')
+    plt.xticks(rotation=20, ha='right')
+    plt.tight_layout()
+    plt.savefig(chart_path, dpi=200)
+    plt.close()
 
 if distribution_type == 'random':
     if fairness_notion == 'stat_parity':
+            
         np.save(destination+dataset_name+'/'+str(num_clients)+'_bal_acc_stat_parity.npy', np.array(bal_acc_list))
         np.save(destination+dataset_name+'/'+str(num_clients)+'_stat_parity.npy', np.array(fairness_notion_list))
     else:

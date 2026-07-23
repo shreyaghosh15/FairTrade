@@ -21,10 +21,13 @@ def find_potential_outcomes(H, observed_output, sensitive_feature): #H is client
     psm = PsmPy(G, treatment=sensitive_feature, indx='index', exclude = [])
     psm.logistic_ps(balance = True)
     psm.predicted_data
-    psm.knn_matched(matcher='propensity_score', replacement=True, caliper=None)
-    
-    psm.matched_ids
-    psm.predicted_data['propensity_logit']
+    # psm.matched_ids
+    # psm.predicted_data['propensity_logit']
+    if hasattr(psm, 'knn_matched'):
+        psm.knn_matched(matcher='propensity_score', replacement=True, caliper=None)
+    elif hasattr(psm, 'kdtree_matched'):
+        psm.kdtree_matched(matcher='propensity_logit', replacement=True, caliper=None)
+
     ps = psm.predicted_data['propensity_logit']
     #print(prop_logit)
 
@@ -762,6 +765,19 @@ def load_kdd_age(url, sensitive_feature):
     #print("bismillah")
     
     return data_dict, X_test, y_test, sex_list, column_names_list,ytest_potential
+
+#Adding a function to get the mappings for sensitive features in the Adult dataset
+def get_adult_sensitive_mappings(url):
+    data = pd.read_csv(url)
+
+    mappings = {}
+    for col in ['sex', 'race']:
+        encoder = LabelEncoder()
+        encoder.fit(data[col])
+        mappings[col] = {label.strip(): int(code) for code, label in enumerate(encoder.classes_)}
+
+    return mappings
+
 def load_dataset(url, dataset_name, num_clients, sensitive_feature, distribution_type):
     if dataset_name == 'adult':
         if distribution_type == 'random':

@@ -1,0 +1,25 @@
+name: fairness-in-AI
+channels:
+  - pytorch
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10.19
+  - pip
+  - numpy=1.26.4
+  - pandas=1.5.3
+  - scipy=1.10.1
+  - matplotlib=3.7.2
+  - pytorch=2.0.1
+  - torchvision=0.15.2
+  - cvxopt=1.3.1
+  - cvxpy=1.3.2
+  - scikit-learn=1.2.2
+  #- scikit-learn=0.24.2
+  - pip:
+      - gpytorch==1.10
+      - botorch==0.8.5
+      - psmpy
+
+      # - scikit-multiflow
+      #- crypten==0.4.1
