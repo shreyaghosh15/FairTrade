@@ -2,6 +2,9 @@
 
 This repository contains my submission for the **Ensuring Fairness in Federated Learning** challenge from the L3S Research Center, Leibniz University Hannover. The work is based on the provided **FairTrade** codebase and focuses on reproducing, understanding, and extending that implementation rather than rebuilding a federated learning framework from scratch.
 
+## My Contributions
+
+My implementation and experimental work for the Ensuring Fairness in Federated Learning challenge can be found in the ```challenge-branch```. The branch contains my code modifications, experimental configurations, results, and documentation, built upon the original FairTrade implementation developed at the L3S Research Center.
 
 ## Environment
 
